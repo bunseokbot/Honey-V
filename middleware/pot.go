@@ -53,7 +53,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 
 	_, err = client.ImagePull(context, imageName, types.ImagePullOptions{})
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	var endpointsConfig = make(map[string]*network.EndpointSettings)
@@ -61,7 +61,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 
 	exposedPorts, portBindings, err := nat.ParsePortSpecs(potPorts)
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	response, err := client.ContainerCreate(context, &container.Config{
@@ -75,11 +75,11 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		EndpointsConfig: endpointsConfig,
 	}, "")
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	if err := client.ContainerStart(context, response.ID, types.ContainerStartOptions{}); err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	return Pot{
@@ -90,7 +90,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 func RemoveAllPots(context context.Context, client *client.Client) bool {
 	pots, err := ReadAllPots(context, client)
 	if err != nil {
-		panic(err)
+		return false
 	}
 
 	for _, pot := range pots {
@@ -106,7 +106,7 @@ func RemoveAllPots(context context.Context, client *client.Client) bool {
 func RemovePot(context context.Context, client *client.Client, potName string) bool {
 	pot, err := ReadPot(context, client, potName)
 	if err != nil {
-		panic(err)
+		return false
 	}
 
 	for _, container := range pot.Containers {
@@ -125,7 +125,7 @@ func RemovePot(context context.Context, client *client.Client, potName string) b
 func ReadPot(context context.Context, client *client.Client, potName string) (Pot, error) {
 	containers, err := client.ContainerList(context, types.ContainerListOptions{All: true})
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	var potContainers []types.Container
@@ -148,7 +148,7 @@ func ReadPot(context context.Context, client *client.Client, potName string) (Po
 func IsExistPotName(context context.Context, client *client.Client, potName string) bool {
 	pots, err := ReadAllPots(context, client)
 	if err != nil {
-		panic(err)
+		return true
 	}
 	
 	for _, pot := range pots {
@@ -164,7 +164,7 @@ func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error){
 	var pots []Pot
 	containers, err := client.ContainerList(context, types.ContainerListOptions{All: true})
 	if err != nil {
-		panic(err)
+		return []Pot{{}}, err
 	}
 
 	containerMap := make(map[string][]types.Container)
@@ -221,7 +221,7 @@ func ReadPotStatus(context context.Context, client *client.Client, potName strin
 func ReadAllPotNetworks(context context.Context, client *client.Client) (map[string]types.NetworkResource, error){
 	networks, err := client.NetworkList(context, types.NetworkListOptions{})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	potNetworks := make(map[string]types.NetworkResource)
@@ -249,7 +249,7 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 
 	exposedPorts, portBindings, err := nat.ParsePortSpecs(potPorts)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	response, err := client.ContainerCreate(context,
@@ -268,12 +268,12 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 		"",
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.ContainerRemove(context, prevContainer.ID, types.ContainerRemoveOptions{Force: true})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.ContainerStart(context, response.ID, types.ContainerStartOptions{})
@@ -293,7 +293,7 @@ func CollectContainerLog(context context.Context, client *client.Client, contain
 func CollectContainerDiff(context context.Context, client *client.Client, containerId string, fileName string) error {
 	diff, err := client.ContainerDiff(context, containerId)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	var values []string
@@ -311,7 +311,7 @@ func CollectContainerDiff(context context.Context, client *client.Client, contai
 
 	file, err := os.Create(fileName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	_, err = file.WriteString(strings.Join(values, "\n"))
@@ -321,7 +321,7 @@ func CollectContainerDiff(context context.Context, client *client.Client, contai
 func CollectContainerDump(context context.Context, client *client.Client, containerId string, fileName string) error {
 	commit, err := client.ContainerCommit(context, containerId, types.ContainerCommitOptions{})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	dump, _ := client.ImageSave(context, []string{commit.ID})
