@@ -187,6 +187,37 @@ func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error){
 	return pots, nil
 }
 
+func ReadAllPotStatus(context context.Context, client *client.Client) (map[string]types.ContainerStats, error) {
+	potStatusMap := make(map[string]types.ContainerStats)
+	pots, err := ReadAllPots(context, client)
+	if err != nil {
+		return potStatusMap, err
+	}
+
+	for _, pot := range pots {
+		for _, container := range pot.Containers {
+			stats, _ := client.ContainerStats(context, container.ID, false)
+			potStatusMap[pot.Name] = stats
+		}
+	}
+
+	return potStatusMap, nil
+}
+
+func ReadPotStatus(context context.Context, client *client.Client, potName string) (types.ContainerStats, error) {
+	pot, err := ReadPot(context, client, potName)
+	if err != nil {
+		return types.ContainerStats{}, err
+	}
+
+	for _, container := range pot.Containers {
+		stats, err := client.ContainerStats(context, container.ID, false)
+		return stats, err
+	}
+
+	return types.ContainerStats{}, err
+}
+
 func ReadAllPotNetworks(context context.Context, client *client.Client) (map[string]types.NetworkResource, error){
 	networks, err := client.NetworkList(context, types.NetworkListOptions{})
 	if err != nil {
