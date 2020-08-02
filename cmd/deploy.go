@@ -21,14 +21,14 @@ var deployCmd = &cobra.Command{
 		if potComposeFile != "" {
 			// compose mode
 
-		} else if potImage == "" {
+		} else if potImage == "" && potDockerFile == "" {
 			// single mode and if pot image is empty
 			log.Println("pot name is empty. terminating program")
 			os.Exit(1)
 
 		} else {
 			log.Printf("Generating %s pot...", potName)
-			response, err := middleware.MakeNewPot(ctx, cli, potName, potImage, potPorts)
+			response, err := middleware.MakeNewPot(ctx, cli, potName, potImage, potPorts, potDockerFile)
 			if err != nil {
 				panic(err)
 			}
@@ -47,6 +47,7 @@ var (
 	potImage string				// Name of docker base image if you want to deploy pot as single mode (optional)
 	potPorts []string			// Port forwarding mapper (optional)
 	potComposeFile string		// Path of docker-compose.yml file if you want to deploy pot as compose mode (optional)
+	potDockerFile string		// Path of Dockerfile if you want to deployt pot with building Dockerfile (optional)
 )
 
 func init() {
@@ -56,6 +57,7 @@ func init() {
 	deployCmd.Flags().StringVarP(&potImage, "image", "i", "", "Name of pot image")
 	deployCmd.Flags().StringArrayVarP(&potPorts, "ports", "p", []string{}, "Port forwarding options")
 	deployCmd.Flags().StringVarP(&potComposeFile, "compose", "c", "", "Path of docker-compose.yml")
+	deployCmd.Flags().StringVarP(&potDockerFile, "dockerfile", "f", "", "Path of Dockerfile")
 
 	deployCmd.MarkFlagRequired("name")
 }

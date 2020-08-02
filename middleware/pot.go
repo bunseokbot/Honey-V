@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,13 +33,42 @@ func writeFile(buffer io.ReadCloser, fileName string) error {
 	return err
 }
 
-func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string) (Pot, error) {
+func tarRepository() (io.Reader, error) {
+	var buffer bytes.Buffer
+	archive := tar.NewWriter(&buffer)
+	rootPath, _ := os.Getwd()
+
+	_ = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		header, _ := tar.FileInfoHeader(info, path)
+		header.Name = strings.ReplaceAll(filepath.ToSlash(path), rootPath, "")
+
+		data, _ := os.Open(path)
+		defer data.Close()
+
+		_ = archive.WriteHeader(header)
+		_, _ = io.Copy(archive, data)
+
+		return nil
+	})
+
+	return &buffer, nil
+}
+
+func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string, potDockerfile string) (Pot, error) {
 	if potName == "" {
 		return Pot{}, errors.New("pot name not found")
 	}
 
-	if imageName == "" {
-		return Pot{}, errors.New("image name not found")
+	if imageName == "" && potDockerfile == "" {
+		return Pot{}, errors.New("image name or dockerfile required")
 	}
 
 	var labels = make(map[string]string)
@@ -51,9 +83,28 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		return Pot{}, errors.New("pot name already exist")
 	}
 
-	_, err = client.ImagePull(context, imageName, types.ImagePullOptions{})
-	if err != nil {
-		return Pot{}, err
+	if imageName != "" {
+		_, err = client.ImagePull(context, imageName, types.ImagePullOptions{})
+		if err != nil {
+			return Pot{}, err
+		}
+	} else if potDockerfile != "" {
+		contextTar, _ := tarRepository()
+		imageName = fmt.Sprintf("%s:latest", potName)
+
+		buildResponse, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
+			Context: contextTar,
+			Tags: []string{imageName},
+			NoCache: true,
+			Dockerfile: potDockerfile,
+		})
+		defer buildResponse.Body.Close()
+
+		if err != nil {
+			return Pot{}, errors.New("failed to build image")
+		}
+	} else {
+		return Pot{}, errors.New("image name and dockerfile not found")
 	}
 
 	var endpointsConfig = make(map[string]*network.EndpointSettings)
