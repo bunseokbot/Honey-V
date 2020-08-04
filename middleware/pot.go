@@ -76,7 +76,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 
 	potNetwork, err := client.NetworkCreate(context, potName, types.NetworkCreate{CheckDuplicate:true, Labels: labels})
 	if err != nil {
-		return Pot{}, errors.New("network create failed")
+		return Pot{}, err
 	}
 
 	if dupCheck := IsExistPotName(context, client, potName); dupCheck {
