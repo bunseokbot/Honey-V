@@ -62,7 +62,7 @@ func tarRepository() (io.Reader, error) {
 	return &buffer, nil
 }
 
-func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string, potDockerfile string) (Pot, error) {
+func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string, potDockerfile string, potEnvironments []string) (Pot, error) {
 	if potName == "" {
 		return Pot{}, errors.New("pot name not found")
 	}
@@ -92,16 +92,15 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		contextTar, _ := tarRepository()
 		imageName = fmt.Sprintf("%s:latest", potName)
 
-		buildResponse, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
+		_, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
 			Context: contextTar,
 			Tags: []string{imageName},
 			NoCache: true,
 			Dockerfile: potDockerfile,
 		})
-		defer buildResponse.Body.Close()
 
 		if err != nil {
-			return Pot{}, errors.New("failed to build image")
+			return Pot{}, err
 		}
 	} else {
 		return Pot{}, errors.New("image name and dockerfile not found")
@@ -119,6 +118,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		Image: imageName,
 		Labels: labels,
 		ExposedPorts: exposedPorts,
+		Env: potEnvironments,
 		Tty: true,
 	}, &container.HostConfig{
 		PortBindings: portBindings,

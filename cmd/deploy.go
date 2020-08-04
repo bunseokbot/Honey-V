@@ -28,7 +28,7 @@ var deployCmd = &cobra.Command{
 
 		} else {
 			log.Printf("Generating %s pot...", potName)
-			response, err := middleware.MakeNewPot(ctx, cli, potName, potImage, potPorts, potDockerFile)
+			response, err := middleware.MakeNewPot(ctx, cli, potName, potImage, potPorts, potDockerFile, potEnvironments)
 			if err != nil {
 				panic(err)
 			}
@@ -46,6 +46,7 @@ var (
 	potName string				// Name of pot (required)
 	potImage string				// Name of docker base image if you want to deploy pot as single mode (optional)
 	potPorts []string			// Port forwarding mapper (optional)
+	potEnvironments []string	// Environment variable config (optional)
 	potComposeFile string		// Path of docker-compose.yml file if you want to deploy pot as compose mode (optional)
 	potDockerFile string		// Path of Dockerfile if you want to deployt pot with building Dockerfile (optional)
 )
@@ -56,6 +57,7 @@ func init() {
 	deployCmd.Flags().StringVarP(&potName, "name", "n", "", "Name of pot")
 	deployCmd.Flags().StringVarP(&potImage, "image", "i", "", "Name of pot image")
 	deployCmd.Flags().StringArrayVarP(&potPorts, "ports", "p", []string{}, "Port forwarding options")
+	deployCmd.Flags().StringArrayVarP(&potEnvironments, "environments", "e", []string{}, "Environment Variables options")
 	deployCmd.Flags().StringVarP(&potComposeFile, "compose", "c", "", "Path of docker-compose.yml")
 	deployCmd.Flags().StringVarP(&potDockerFile, "dockerfile", "f", "", "Path of Dockerfile")
 
