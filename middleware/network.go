@@ -13,6 +13,10 @@ import (
 
 func DumpNetwork(stopCapture <-chan string, fileName string, potName string) {
 	defer func() {
+		if _, err := os.Stat(potName); os.IsNotExist(err) {
+			_ = os.Mkdir(potName, os.ModePerm)
+		}
+
 		f, _ := os.Create(fileName)
 		w := pcapgo.NewWriter(f)
 		_ = w.WriteFileHeader(1024, layers.LinkTypeEthernet)
@@ -47,5 +51,4 @@ func DumpNetwork(stopCapture <-chan string, fileName string, potName string) {
 			}
 		}
 	}()
-	// close(stopCapture)
 }
