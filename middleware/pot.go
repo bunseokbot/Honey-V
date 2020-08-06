@@ -286,6 +286,21 @@ func ReadAllPotNetworks(context context.Context, client *client.Client) (map[str
 	return potNetworks, nil
 }
 
+func ReadPotNetwork(context context.Context, client *client.Client, potName string) (types.NetworkResource, error) {
+	networks, err := client.NetworkList(context, types.NetworkListOptions{})
+	if err != nil {
+		return types.NetworkResource{}, err
+	}
+
+	for _, network := range networks {
+		if _, found := network.Labels["pot.name"]; found && network.Name == potName {
+			return network, err
+		}
+	}
+
+	return types.NetworkResource{}, errors.New("network not found")
+}
+
 func RestartCleanPot(context context.Context, client *client.Client, prevContainer types.Container, pot Pot) error {
 	var potNetwork = prevContainer.NetworkSettings.Networks[pot.Name]
 

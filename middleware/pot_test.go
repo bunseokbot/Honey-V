@@ -124,6 +124,20 @@ func TestReadPotStatus(t *testing.T) {
 	t.Logf("running processes: %d", containerStat.NumProcs)
 }
 
+func TestReadPotNetwork(t *testing.T) {
+	ctx, cli, err := getDockerEnv(t)
+	if err != nil {
+		t.Error("fail to retrieve docker environment")
+	}
+
+	network, err := ReadPotNetwork(ctx, cli, potName)
+	if err != nil {
+		t.Errorf("fail to read pot network information - %s", err)
+	}
+
+	t.Logf("Network ID: %s", network.ID)
+}
+
 func TestCollectContainerDiff(t *testing.T) {
 	ctx, cli, err := getDockerEnv(t)
 	if err != nil {

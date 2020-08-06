@@ -31,7 +31,13 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 				if _, err := os.Stat(filepath.Join(outputRoot, network.Name)); os.IsNotExist(err) {
 					_ = os.Mkdir(filepath.Join(outputRoot, network.Name), os.ModePerm)
 				}
-				go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, network.Name, "network.pcap"), potName)
+
+				network, err := middleware.ReadPotNetwork(ctx, cli, potName)
+				if err != nil {
+					panic(err)
+				}
+
+				go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, network.Name, "network.pcap"), network)
 			}
 		}
 
@@ -49,7 +55,12 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 		select {
 		case message := <- resumeCapture:
 			log.Println("resume capture packet")
-			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), message)
+			network, err := middleware.ReadPotNetwork(ctx, cli, message)
+			if err != nil {
+				panic(err)
+			}
+
+			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
 		}
 
 		<- timer.C
