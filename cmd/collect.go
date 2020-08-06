@@ -28,10 +28,10 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 				log.Printf("new %s pot detected\n", network.Name)
 				managedPots[network.ID] = network
 
-				if _, err := os.Stat(network.Name); os.IsNotExist(err) {
-					_ = os.Mkdir(network.Name, os.ModePerm)
+				if _, err := os.Stat(filepath.Join(outputRoot, network.Name)); os.IsNotExist(err) {
+					_ = os.Mkdir(filepath.Join(outputRoot, network.Name), os.ModePerm)
 				}
-				go middleware.DumpNetwork(stopCapture, filepath.Join(network.Name, "network.pcap"), potName)
+				go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, network.Name, "network.pcap"), potName)
 			}
 		}
 
@@ -49,7 +49,7 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 		select {
 		case message := <- resumeCapture:
 			log.Println("resume capture packet")
-			go middleware.DumpNetwork(stopCapture, filepath.Join(message, "network.pcap"), message)
+			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), message)
 		}
 
 		<- timer.C
@@ -57,12 +57,13 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 }
 
 func compressArtifacts(potName string) error {
-	if _, err := os.Stat(potName); os.IsNotExist(err) {
+	artifactPath := filepath.Join(outputRoot, potName)
+	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
 		return err
 	}
 
 	zipFile, err := os.Create(filepath.Join(
-		outputRoot,
+		artifactPath,
 		fmt.Sprintf("%s_%d.zip", potName, time.Now().Unix())))
 	if err != nil {
 		return err
@@ -72,7 +73,7 @@ func compressArtifacts(potName string) error {
 	archive := zip.NewWriter(zipFile)
 	defer archive.Close()
 	
-	_ = filepath.Walk(potName, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(artifactPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -110,11 +111,11 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	for _, pot := range pots {
 		for _, container := range pot.Containers {
 			if _, err := os.Stat(pot.Name); os.IsNotExist(err) {
-				_ = os.Mkdir(pot.Name, os.ModePerm)
+				_ = os.Mkdir(filepath.Join(outputRoot, pot.Name), os.ModePerm)
 			}
 
 			// collect logs
-			err := middleware.CollectContainerLog(ctx, cli, container.ID, filepath.Join(pot.Name, "container.log"))
+			err := middleware.CollectContainerLog(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.log"))
 			if err != nil {
 				panic(err)
 			}
@@ -122,7 +123,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 			log.Printf("Collect container stdout/stderr log from %s pot\n", container.Labels["pot.name"])
 
 			// collect diff
-			err = middleware.CollectContainerDiff(ctx, cli, container.ID, filepath.Join(pot.Name, "container.diff"))
+			err = middleware.CollectContainerDiff(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.diff"))
 			if err != nil {
 				panic(err)
 			}
@@ -130,7 +131,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 			log.Printf("Collect container diff log from %s pot\n", container.Labels["pot.name"])
 
 			// collect container dump
-			err = middleware.CollectContainerDump(ctx, cli, container.ID, filepath.Join(pot.Name, "dump.tar"))
+			err = middleware.CollectContainerDump(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "dump.tar"))
 			if err != nil {
 				panic(err)
 			}
@@ -184,7 +185,7 @@ var collectCmd = &cobra.Command{
 		go captureNetworkPacket(ctx, cli, stopCapture, resumeCapture)
 
 		for {
-			collectTimer := time.NewTimer(time.Minute * 5)
+			collectTimer := time.NewTimer(time.Hour * time.Duration(collectInterval))
 			if count > 0 {
 				log.Println("Start collecting artifacts from containers...")
 				collectContainerArtifact(ctx, cli, stopCapture, resumeCapture)
@@ -197,11 +198,14 @@ var collectCmd = &cobra.Command{
 
 var (
 	outputRoot string
+	collectInterval int
 )
 
 func init() {
 	rootCmd.AddCommand(collectCmd)
 
 	collectCmd.Flags().StringVarP(&outputRoot, "path", "p", "", "Path of artifact output")
+	collectCmd.Flags().IntVarP(&collectInterval, "interval", "i", 1, "Interval of artifact collection")
+
 	collectCmd.MarkFlagRequired("path")
 }
