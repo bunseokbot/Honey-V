@@ -20,9 +20,10 @@ func DumpNetwork(stopCapture <-chan string, fileName string, network types.Netwo
 		defer f.Close()
 
 		// Open the device for capturing
-		handle, err := pcap.OpenLive("en0", 1024, false, -1 * time.Second)
+		interfaceName := fmt.Sprintf("br-%s", network.ID[:12])
+		handle, err := pcap.OpenLive(interfaceName, 1024, false, -1 * time.Second)
 		if err != nil {
-			fmt.Printf("Error opening device %s: %v", fmt.Sprintf("br-%s", network.ID[:12]), err)
+			fmt.Printf("Error opening device %s: %v", interfaceName, err)
 			os.Exit(1)
 		}
 		defer handle.Close()
