@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,10 +85,13 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 	}
 
 	if imageName != "" {
-		_, err = client.ImagePull(context, imageName, types.ImagePullOptions{})
+		responseBody, err := client.ImagePull(context, imageName, types.ImagePullOptions{})
 		if err != nil {
 			return Pot{}, err
 		}
+		defer responseBody.Close()
+
+		_, _ = io.Copy(ioutil.Discard, responseBody)
 	} else if potDockerfile != "" {
 		contextTar, _ := tarRepository()
 		imageName = fmt.Sprintf("%s:latest", potName)
@@ -155,10 +159,7 @@ func RemoveAllPots(context context.Context, client *client.Client) bool {
 }
 
 func RemovePot(context context.Context, client *client.Client, potName string) bool {
-	pot, err := ReadPot(context, client, potName)
-	if err != nil {
-		return false
-	}
+	pot, _ := ReadPot(context, client, potName)
 
 	for _, container := range pot.Containers {
 		err := client.ContainerRemove(context, container.ID, types.ContainerRemoveOptions{Force: true})
