@@ -30,6 +30,7 @@ var deployCmd = &cobra.Command{
 			log.Printf("Generating %s pot...", potName)
 			response, err := middleware.MakeNewPot(ctx, cli, potName, potImage, potPorts, potDockerFile, potEnvironments)
 			if err != nil {
+				middleware.RemovePot(ctx, cli, potName)
 				panic(err)
 			}
 

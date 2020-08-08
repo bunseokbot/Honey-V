@@ -23,6 +23,8 @@ import (
 func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
 	managedPots := make(map[string]types.NetworkResource)
 
+	go manageNetworkPacketCapture(ctx, cli, stopCapture, resumeCapture)
+
 	for {
 		timer := time.NewTimer(time.Second * 5)
 		networks, _ := middleware.ReadAllPotNetworks(ctx, cli)
@@ -51,22 +53,24 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 			}
 		}
 
-		select {
-		case message := <- resumeCapture:
-			log.Println("resume capture packet")
-			network, err := middleware.ReadPotNetwork(ctx, cli, message)
-			if err != nil {
-				panic(err)
-			}
+		<- timer.C
+	}
+}
 
-			if _, err := os.Stat(filepath.Join(outputRoot, message)); os.IsNotExist(err) {
-				_ = os.Mkdir(filepath.Join(outputRoot, message), os.ModePerm)
-			}
-
-			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
+func manageNetworkPacketCapture(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
+	select {
+	case message := <- resumeCapture:
+		log.Println("resume capture packet")
+		network, err := middleware.ReadPotNetwork(ctx, cli, message)
+		if err != nil {
+			panic(err)
 		}
 
-		<- timer.C
+		if _, err := os.Stat(filepath.Join(outputRoot, message)); os.IsNotExist(err) {
+			_ = os.Mkdir(filepath.Join(outputRoot, message), os.ModePerm)
+		}
+
+		go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
 	}
 }
 
