@@ -3,12 +3,16 @@ package cmd
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 	"honeypot/middleware"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,11 +34,6 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 
 				if _, err := os.Stat(filepath.Join(outputRoot, network.Name)); os.IsNotExist(err) {
 					_ = os.Mkdir(filepath.Join(outputRoot, network.Name), os.ModePerm)
-				}
-
-				network, err := middleware.ReadPotNetwork(ctx, cli, potName)
-				if err != nil {
-					panic(err)
 				}
 
 				go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, network.Name, "network.pcap"), network)
@@ -60,6 +59,10 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 				panic(err)
 			}
 
+			if _, err := os.Stat(filepath.Join(outputRoot, message)); os.IsNotExist(err) {
+				_ = os.Mkdir(filepath.Join(outputRoot, message), os.ModePerm)
+			}
+
 			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
 		}
 
@@ -74,7 +77,7 @@ func compressArtifacts(potName string) error {
 	}
 
 	zipFile, err := os.Create(filepath.Join(
-		artifactPath,
+		outputRoot,
 		fmt.Sprintf("%s_%d.zip", potName, time.Now().Unix())))
 	if err != nil {
 		return err
@@ -89,11 +92,16 @@ func compressArtifacts(potName string) error {
 			return err
 		}
 
+		if info.IsDir() {
+			return nil
+		}
+
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
 			return err
 		}
 		header.Name = filepath.Base(path)
+		header.Method = zip.Deflate
 
 		writer, err := archive.CreateHeader(header)
 		if err != nil {
@@ -110,6 +118,29 @@ func compressArtifacts(potName string) error {
 		return err
 	})
 
+	return err
+}
+
+
+func calculateFileHash(filePath string) error {
+	fileHashMap := make(map[string]string)
+
+	err := filepath.Walk(filePath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			hasher := sha256.New()
+			s, _ := ioutil.ReadFile(path)
+			hasher.Write(s)
+			fileHashMap[filepath.Base(path)] = hex.EncodeToString(hasher.Sum(nil))
+		}
+		return err
+	})
+
+	if err != nil {
+		return err
+	}
+
+	jsonString, _ := json.Marshal(fileHashMap)
+	err = ioutil.WriteFile(filepath.Join(filePath, "hash.json"), jsonString, 0644)
 	return err
 }
 
@@ -151,12 +182,17 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 
 			stopCapture <- pot.Name
 
+			// calculate hash value
+			err = calculateFileHash(filepath.Join(outputRoot, pot.Name))
+			if err != nil {
+				panic(err)
+			}
+
 			// compress artifacts
 			err = compressArtifacts(pot.Name)
 			if err != nil {
 				panic(err)
 			}
-
 
 			// cleanup pot container
 			err = middleware.RestartCleanPot(ctx, cli, container, pot)
@@ -164,7 +200,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 				panic(err)
 			}
 
-			_ = os.RemoveAll(pot.Name)
+			_ = os.RemoveAll(filepath.Join(outputRoot, pot.Name))
 
 			resumeCapture <- pot.Name
 
