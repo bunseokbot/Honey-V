@@ -1,0 +1,7 @@
+LICENSE
+README.md
+Dockerfile
+
+# Test artifact directory
+artifacts/*
+artifact/*

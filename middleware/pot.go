@@ -96,12 +96,13 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		contextTar, _ := tarRepository()
 		imageName = fmt.Sprintf("%s:latest", potName)
 
-		_, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
+		responseBody, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
 			Context: contextTar,
 			Tags: []string{imageName},
 			NoCache: true,
 			Dockerfile: potDockerfile,
 		})
+		_, _ = io.Copy(ioutil.Discard, responseBody.Body)
 
 		if err != nil {
 			return Pot{}, err
@@ -393,5 +394,7 @@ func CollectContainerDump(context context.Context, client *client.Client, contai
 
 	dump, _ := client.ImageSave(context, []string{commit.ID})
 	err = writeFile(dump, fileName)
+	defer dump.Close()
+
 	return err
 }

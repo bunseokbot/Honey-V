@@ -148,7 +148,64 @@ func calculateFileHash(filePath string) error {
 	return err
 }
 
-func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
+func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string, container types.Container, pot middleware.Pot) {
+	if _, err := os.Stat(pot.Name); os.IsNotExist(err) {
+		_ = os.Mkdir(filepath.Join(outputRoot, pot.Name), os.ModePerm)
+	}
+
+	// collect logs
+	err := middleware.CollectContainerLog(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.log"))
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("Collect container stdout/stderr log from %s pot\n", pot.Name)
+
+	// collect diff
+	err = middleware.CollectContainerDiff(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.diff"))
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("Collect container diff log from %s pot\n", pot.Name)
+
+	// collect container dump
+	err = middleware.CollectContainerDump(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "dump.tar"))
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("Collect container image from %s pot\n", pot.Name)
+
+	stopCapture <- pot.Name
+
+	// calculate hash value
+	err = calculateFileHash(filepath.Join(outputRoot, pot.Name))
+	if err != nil {
+		panic(err)
+	}
+
+	// compress artifacts
+	err = compressArtifacts(pot.Name)
+	if err != nil {
+		panic(err)
+	}
+
+	// cleanup pot container
+	err = middleware.RestartCleanPot(ctx, cli, container, pot)
+	if err != nil {
+		panic(err)
+	}
+
+	_ = os.RemoveAll(filepath.Join(outputRoot, pot.Name))
+
+	resumeCapture <- pot.Name
+
+	log.Printf("Successfully replaced %s pot to clean container", pot.Name)
+}
+
+
+func manageContainerArtifact(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
 	pots, err := middleware.ReadAllPots(ctx, cli)
 	if err != nil {
 		panic(err)
@@ -156,59 +213,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 
 	for _, pot := range pots {
 		for _, container := range pot.Containers {
-			if _, err := os.Stat(pot.Name); os.IsNotExist(err) {
-				_ = os.Mkdir(filepath.Join(outputRoot, pot.Name), os.ModePerm)
-			}
-
-			// collect logs
-			err := middleware.CollectContainerLog(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.log"))
-			if err != nil {
-				panic(err)
-			}
-
-			log.Printf("Collect container stdout/stderr log from %s pot\n", container.Labels["pot.name"])
-
-			// collect diff
-			err = middleware.CollectContainerDiff(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.diff"))
-			if err != nil {
-				panic(err)
-			}
-
-			log.Printf("Collect container diff log from %s pot\n", container.Labels["pot.name"])
-
-			// collect container dump
-			err = middleware.CollectContainerDump(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "dump.tar"))
-			if err != nil {
-				panic(err)
-			}
-
-			log.Printf("Collect container image from %s pot\n", container.Labels["pot.name"])
-
-			stopCapture <- pot.Name
-
-			// calculate hash value
-			err = calculateFileHash(filepath.Join(outputRoot, pot.Name))
-			if err != nil {
-				panic(err)
-			}
-
-			// compress artifacts
-			err = compressArtifacts(pot.Name)
-			if err != nil {
-				panic(err)
-			}
-
-			// cleanup pot container
-			err = middleware.RestartCleanPot(ctx, cli, container, pot)
-			if err != nil {
-				panic(err)
-			}
-
-			_ = os.RemoveAll(filepath.Join(outputRoot, pot.Name))
-
-			resumeCapture <- pot.Name
-
-			log.Printf("Successfully replaced to clean container")
+			go collectContainerArtifact(ctx, cli, stopCapture, resumeCapture, container, pot)
 		}
 	}
 }
@@ -239,7 +244,7 @@ var collectCmd = &cobra.Command{
 			collectTimer := time.NewTimer(time.Hour * time.Duration(collectInterval))
 			if count > 0 {
 				log.Println("Start collecting artifacts from containers...")
-				collectContainerArtifact(ctx, cli, stopCapture, resumeCapture)
+				manageContainerArtifact(ctx, cli, stopCapture, resumeCapture)
 			}
 			count++
 			<- collectTimer.C
