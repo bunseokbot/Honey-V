@@ -58,19 +58,21 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 }
 
 func manageNetworkPacketCapture(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
-	select {
-	case message := <- resumeCapture:
-		log.Println("resume capture packet")
-		network, err := middleware.ReadPotNetwork(ctx, cli, message)
-		if err != nil {
-			panic(err)
-		}
+	for {
+		select {
+		case message := <- resumeCapture:
+			log.Printf("resume %s network packet capture", message)
+			network, err := middleware.ReadPotNetwork(ctx, cli, message)
+			if err != nil {
+				panic(err)
+			}
 
-		if _, err := os.Stat(filepath.Join(outputRoot, message)); os.IsNotExist(err) {
-			_ = os.Mkdir(filepath.Join(outputRoot, message), os.ModePerm)
-		}
+			if _, err := os.Stat(filepath.Join(outputRoot, message)); os.IsNotExist(err) {
+				_ = os.Mkdir(filepath.Join(outputRoot, message), os.ModePerm)
+			}
 
-		go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
+			go middleware.DumpNetwork(stopCapture, filepath.Join(outputRoot, message, "network.pcap"), network)
+		}
 	}
 }
 
@@ -176,7 +178,6 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	}
 
 	log.Printf("Collect container image from %s pot\n", pot.Name)
-
 	stopCapture <- pot.Name
 
 	// calculate hash value

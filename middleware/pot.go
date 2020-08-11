@@ -101,7 +101,9 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 			Tags: []string{imageName},
 			NoCache: true,
 			Dockerfile: potDockerfile,
+			ForceRemove: true,
 		})
+		
 		_, _ = io.Copy(ioutil.Discard, responseBody.Body)
 
 		if err != nil {
@@ -315,6 +317,11 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 		potPorts = append(potPorts, port)
 	}
 
+	containerInfo, err := client.ContainerInspect(context, prevContainer.ID)
+	if err != nil {
+		return err
+	}
+
 	exposedPorts, portBindings, err := nat.ParsePortSpecs(potPorts)
 	if err != nil {
 		return err
@@ -326,6 +333,7 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 			Labels:       prevContainer.Labels,
 			ExposedPorts: exposedPorts,
 			Tty:          true,
+			Env:          containerInfo.Config.Env,
 		},
 		&container.HostConfig{
 			PortBindings: portBindings,
