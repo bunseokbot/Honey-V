@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"honeypot/cmd"
+	"io"
+	"log"
+	"os"
 )
 
 func introTitle() {
@@ -22,5 +25,19 @@ func introTitle() {
 
 func main() {
 	introTitle()
+
+	// set logger
+	fpLog, err := os.OpenFile("honeypot.log", os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	defer fpLog.Close()
+
+	multiWriter := io.MultiWriter(fpLog, os.Stdout)
+	log.SetOutput(multiWriter)
+
+	multiWriter = io.MultiWriter(fpLog, os.Stderr)
+	log.SetOutput(multiWriter)
+
 	cmd.Execute()
 }

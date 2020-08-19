@@ -158,6 +158,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	// collect logs
 	err := middleware.CollectContainerLog(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.log"))
 	if err != nil {
+		log.Println("error while collecting container log")
 		panic(err)
 	}
 
@@ -166,6 +167,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	// collect diff
 	err = middleware.CollectContainerDiff(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.diff"))
 	if err != nil {
+		log.Println("error while collecting container diff")
 		panic(err)
 	}
 
@@ -183,18 +185,21 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	// calculate hash value
 	err = calculateFileHash(filepath.Join(outputRoot, pot.Name))
 	if err != nil {
+		log.Println("error while calculating hash")
 		panic(err)
 	}
 
 	// compress artifacts
 	err = compressArtifacts(pot.Name)
 	if err != nil {
+		log.Println("error while compressing artifact")
 		panic(err)
 	}
 
 	// cleanup pot container
 	err = middleware.RestartCleanPot(ctx, cli, container, pot)
 	if err != nil {
+		log.Println("error while restarting pot")
 		panic(err)
 	}
 
