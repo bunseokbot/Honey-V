@@ -38,7 +38,7 @@ func DumpNetwork(stopCapture <-chan string, fileName string, network types.Netwo
 			packetCount++
 		case message := <- stopCapture:
 			if message == network.Name {
-				log.Println("stop capturing packet.")
+				log.Printf("stop capturing %s packet.", network.Name)
 				break
 			}
 		default:

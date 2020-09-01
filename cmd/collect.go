@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	"archive/zip"
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -82,17 +83,24 @@ func compressArtifacts(potName string) error {
 		return err
 	}
 
-	zipFile, err := os.Create(filepath.Join(
+	tarFile, err := os.Create(filepath.Join(
 		outputRoot,
-		fmt.Sprintf("%s_%d.zip", potName, time.Now().Unix())))
+		fmt.Sprintf("%s_%d.tar.gz", potName, time.Now().Unix())))
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
+	defer tarFile.Close()
 
-	archive := zip.NewWriter(zipFile)
-	defer archive.Close()
-	
+	var gzipWriter *gzip.Writer
+
+	if gzipWriter, err = gzip.NewWriterLevel(tarFile, gzip.BestCompression); err != nil {
+		return err
+	}
+	defer gzipWriter.Close()
+
+	tw := tar.NewWriter(gzipWriter)
+	defer tw.Close()
+
 	_ = filepath.Walk(artifactPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -102,28 +110,37 @@ func compressArtifacts(potName string) error {
 			return nil
 		}
 
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = filepath.Base(path)
-		header.Method = zip.Deflate
-
-		writer, err := archive.CreateHeader(header)
+		header, err := tar.FileInfoHeader(info, path)
 		if err != nil {
 			return err
 		}
 
-		file, err := os.Open(path)
+		header.Name = filepath.ToSlash(path)
+
+		// write header
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		// write body
+		data, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		if _, err := io.Copy(tw, data); err != nil {
+			return err
+		}
 
-		_, err = io.Copy(writer, file)
-		return err
+		return nil
 	})
 
+	return err
+}
+
+func renameDirectory(potName string) error {
+	artifactPath := filepath.Join(outputRoot, potName)
+	renamePath := filepath.Join(outputRoot, fmt.Sprintf("%s_%d", potName, time.Now().Unix()))
+	err := os.Rename(artifactPath, renamePath)
 	return err
 }
 
@@ -173,6 +190,15 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 
 	log.Printf("Collect container diff log from %s pot\n", pot.Name)
 
+	// collect top
+	err = middleware.CollectContainerTop(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "container.top"))
+	if err != nil {
+		log.Println("error while collecting container top")
+		panic(err)
+	}
+
+	log.Printf("Collect container top from %s pot\n", pot.Name)
+
 	// collect container dump
 	err = middleware.CollectContainerDump(ctx, cli, container.ID, filepath.Join(outputRoot, pot.Name, "dump.tar"))
 	if err != nil {
@@ -180,6 +206,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	}
 
 	log.Printf("Collect container image from %s pot\n", pot.Name)
+
 	stopCapture <- pot.Name
 
 	// calculate hash value
@@ -189,12 +216,25 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 		panic(err)
 	}
 
+	log.Printf("Calculate hash from %s pot\n", pot.Name)
+
 	// compress artifacts
-	err = compressArtifacts(pot.Name)
+	/* err = compressArtifacts(pot.Name)
 	if err != nil {
 		log.Println("error while compressing artifact")
 		panic(err)
 	}
+
+	log.Printf("Compress artifact from %s pot\n", pot.Name)
+	 */
+
+	err = renameDirectory(pot.Name)
+	if err != nil {
+		log.Println("error while renaming directory")
+		panic(err)
+	}
+
+	log.Printf("Rename directory from %s pot\n", pot.Name)
 
 	// cleanup pot container
 	err = middleware.RestartCleanPot(ctx, cli, container, pot)
@@ -202,6 +242,8 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 		log.Println("error while restarting pot")
 		panic(err)
 	}
+
+	log.Printf("Restart clean %s pot\n", pot.Name)
 
 	_ = os.RemoveAll(filepath.Join(outputRoot, pot.Name))
 
@@ -216,6 +258,8 @@ func manageContainerArtifact(ctx context.Context, cli *client.Client, stopCaptur
 	if err != nil {
 		panic(err)
 	}
+
+	log.Printf("Read %d count pot(s)", len(pots))
 
 	for _, pot := range pots {
 		for _, container := range pot.Containers {

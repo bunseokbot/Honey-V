@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 )
 
 type Pot struct {
@@ -395,14 +396,33 @@ func CollectContainerDiff(context context.Context, client *client.Client, contai
 }
 
 func CollectContainerDump(context context.Context, client *client.Client, containerId string, fileName string) error {
-	commit, err := client.ContainerCommit(context, containerId, types.ContainerCommitOptions{})
+	dump, err := client.ContainerExport(context, containerId)
 	if err != nil {
 		return err
 	}
-
-	dump, _ := client.ImageSave(context, []string{commit.ID})
 	err = writeFile(dump, fileName)
 	defer dump.Close()
 
 	return err
+}
+
+func CollectContainerTop(context context.Context, client *client.Client, containerId string, fileName string) error {
+	topList, err := client.ContainerTop(context, containerId, []string{})
+	if err != nil {
+		return err
+	}
+
+	fp, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+
+	w := tabwriter.NewWriter(fp, 20, 1, 3, ' ', 0)
+	_, _ = fmt.Fprintln(w, strings.Join(topList.Titles, "\t"))
+	for _, proc := range topList.Processes {
+		_, _ = fmt.Fprintln(w, strings.Join(proc, "\t"))
+	}
+	_ = w.Flush()
+
+	return nil
 }
