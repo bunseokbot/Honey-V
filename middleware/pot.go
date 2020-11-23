@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,8 +12,11 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
+	"text/tabwriter"
 )
 
 type Pot struct {
@@ -30,13 +35,42 @@ func writeFile(buffer io.ReadCloser, fileName string) error {
 	return err
 }
 
-func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string) (Pot, error) {
+func tarRepository() (io.Reader, error) {
+	var buffer bytes.Buffer
+	archive := tar.NewWriter(&buffer)
+	rootPath, _ := os.Getwd()
+
+	_ = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		header, _ := tar.FileInfoHeader(info, path)
+		header.Name = strings.ReplaceAll(filepath.ToSlash(path), rootPath, "")
+
+		data, _ := os.Open(path)
+		defer data.Close()
+
+		_ = archive.WriteHeader(header)
+		_, _ = io.Copy(archive, data)
+
+		return nil
+	})
+
+	return &buffer, nil
+}
+
+func MakeNewPot(context context.Context, client *client.Client, potName string, imageName string, potPorts []string, potDockerfile string, potEnvironments []string) (Pot, error) {
 	if potName == "" {
 		return Pot{}, errors.New("pot name not found")
 	}
 
-	if imageName == "" {
-		return Pot{}, errors.New("image name not found")
+	if imageName == "" && potDockerfile == "" {
+		return Pot{}, errors.New("image name or dockerfile required")
 	}
 
 	var labels = make(map[string]string)
@@ -44,16 +78,40 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 
 	potNetwork, err := client.NetworkCreate(context, potName, types.NetworkCreate{CheckDuplicate:true, Labels: labels})
 	if err != nil {
-		return Pot{}, errors.New("network create failed")
+		return Pot{}, err
 	}
 
 	if dupCheck := IsExistPotName(context, client, potName); dupCheck {
 		return Pot{}, errors.New("pot name already exist")
 	}
 
-	_, err = client.ImagePull(context, imageName, types.ImagePullOptions{})
-	if err != nil {
-		panic(err)
+	if imageName != "" {
+		responseBody, err := client.ImagePull(context, imageName, types.ImagePullOptions{})
+		if err != nil {
+			return Pot{}, err
+		}
+		defer responseBody.Close()
+
+		_, _ = io.Copy(ioutil.Discard, responseBody)
+	} else if potDockerfile != "" {
+		contextTar, _ := tarRepository()
+		imageName = fmt.Sprintf("%s:latest", potName)
+
+		responseBody, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
+			Context: contextTar,
+			Tags: []string{imageName},
+			NoCache: true,
+			Dockerfile: potDockerfile,
+			ForceRemove: true,
+		})
+		
+		_, _ = io.Copy(ioutil.Discard, responseBody.Body)
+
+		if err != nil {
+			return Pot{}, err
+		}
+	} else {
+		return Pot{}, errors.New("image name and dockerfile not found")
 	}
 
 	var endpointsConfig = make(map[string]*network.EndpointSettings)
@@ -61,13 +119,14 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 
 	exposedPorts, portBindings, err := nat.ParsePortSpecs(potPorts)
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	response, err := client.ContainerCreate(context, &container.Config{
 		Image: imageName,
 		Labels: labels,
 		ExposedPorts: exposedPorts,
+		Env: potEnvironments,
 		Tty: true,
 	}, &container.HostConfig{
 		PortBindings: portBindings,
@@ -75,11 +134,11 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		EndpointsConfig: endpointsConfig,
 	}, "")
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	if err := client.ContainerStart(context, response.ID, types.ContainerStartOptions{}); err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	return Pot{
@@ -90,7 +149,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 func RemoveAllPots(context context.Context, client *client.Client) bool {
 	pots, err := ReadAllPots(context, client)
 	if err != nil {
-		panic(err)
+		return false
 	}
 
 	for _, pot := range pots {
@@ -104,10 +163,7 @@ func RemoveAllPots(context context.Context, client *client.Client) bool {
 }
 
 func RemovePot(context context.Context, client *client.Client, potName string) bool {
-	pot, err := ReadPot(context, client, potName)
-	if err != nil {
-		panic(err)
-	}
+	pot, _ := ReadPot(context, client, potName)
 
 	for _, container := range pot.Containers {
 		err := client.ContainerRemove(context, container.ID, types.ContainerRemoveOptions{Force: true})
@@ -125,7 +181,7 @@ func RemovePot(context context.Context, client *client.Client, potName string) b
 func ReadPot(context context.Context, client *client.Client, potName string) (Pot, error) {
 	containers, err := client.ContainerList(context, types.ContainerListOptions{All: true})
 	if err != nil {
-		panic(err)
+		return Pot{}, err
 	}
 
 	var potContainers []types.Container
@@ -148,7 +204,7 @@ func ReadPot(context context.Context, client *client.Client, potName string) (Po
 func IsExistPotName(context context.Context, client *client.Client, potName string) bool {
 	pots, err := ReadAllPots(context, client)
 	if err != nil {
-		panic(err)
+		return true
 	}
 	
 	for _, pot := range pots {
@@ -164,7 +220,7 @@ func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error){
 	var pots []Pot
 	containers, err := client.ContainerList(context, types.ContainerListOptions{All: true})
 	if err != nil {
-		panic(err)
+		return []Pot{{}}, err
 	}
 
 	containerMap := make(map[string][]types.Container)
@@ -187,10 +243,41 @@ func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error){
 	return pots, nil
 }
 
+func ReadAllPotStatus(context context.Context, client *client.Client) (map[string]types.ContainerStats, error) {
+	potStatusMap := make(map[string]types.ContainerStats)
+	pots, err := ReadAllPots(context, client)
+	if err != nil {
+		return potStatusMap, err
+	}
+
+	for _, pot := range pots {
+		for _, container := range pot.Containers {
+			stats, _ := client.ContainerStats(context, container.ID, false)
+			potStatusMap[pot.Name] = stats
+		}
+	}
+
+	return potStatusMap, nil
+}
+
+func ReadPotStatus(context context.Context, client *client.Client, potName string) (types.ContainerStats, error) {
+	pot, err := ReadPot(context, client, potName)
+	if err != nil {
+		return types.ContainerStats{}, err
+	}
+
+	for _, container := range pot.Containers {
+		stats, err := client.ContainerStats(context, container.ID, false)
+		return stats, err
+	}
+
+	return types.ContainerStats{}, err
+}
+
 func ReadAllPotNetworks(context context.Context, client *client.Client) (map[string]types.NetworkResource, error){
 	networks, err := client.NetworkList(context, types.NetworkListOptions{})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	potNetworks := make(map[string]types.NetworkResource)
@@ -202,6 +289,21 @@ func ReadAllPotNetworks(context context.Context, client *client.Client) (map[str
 	}
 
 	return potNetworks, nil
+}
+
+func ReadPotNetwork(context context.Context, client *client.Client, potName string) (types.NetworkResource, error) {
+	networks, err := client.NetworkList(context, types.NetworkListOptions{})
+	if err != nil {
+		return types.NetworkResource{}, err
+	}
+
+	for _, network := range networks {
+		if _, found := network.Labels["pot.name"]; found && network.Name == potName {
+			return network, err
+		}
+	}
+
+	return types.NetworkResource{}, errors.New("network not found")
 }
 
 func RestartCleanPot(context context.Context, client *client.Client, prevContainer types.Container, pot Pot) error {
@@ -216,9 +318,14 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 		potPorts = append(potPorts, port)
 	}
 
+	containerInfo, err := client.ContainerInspect(context, prevContainer.ID)
+	if err != nil {
+		return err
+	}
+
 	exposedPorts, portBindings, err := nat.ParsePortSpecs(potPorts)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	response, err := client.ContainerCreate(context,
@@ -227,6 +334,7 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 			Labels:       prevContainer.Labels,
 			ExposedPorts: exposedPorts,
 			Tty:          true,
+			Env:          containerInfo.Config.Env,
 		},
 		&container.HostConfig{
 			PortBindings: portBindings,
@@ -237,12 +345,12 @@ func RestartCleanPot(context context.Context, client *client.Client, prevContain
 		"",
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.ContainerRemove(context, prevContainer.ID, types.ContainerRemoveOptions{Force: true})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.ContainerStart(context, response.ID, types.ContainerStartOptions{})
@@ -262,7 +370,7 @@ func CollectContainerLog(context context.Context, client *client.Client, contain
 func CollectContainerDiff(context context.Context, client *client.Client, containerId string, fileName string) error {
 	diff, err := client.ContainerDiff(context, containerId)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	var values []string
@@ -280,7 +388,7 @@ func CollectContainerDiff(context context.Context, client *client.Client, contai
 
 	file, err := os.Create(fileName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	_, err = file.WriteString(strings.Join(values, "\n"))
@@ -288,12 +396,33 @@ func CollectContainerDiff(context context.Context, client *client.Client, contai
 }
 
 func CollectContainerDump(context context.Context, client *client.Client, containerId string, fileName string) error {
-	commit, err := client.ContainerCommit(context, containerId, types.ContainerCommitOptions{})
+	dump, err := client.ContainerExport(context, containerId)
 	if err != nil {
-		panic(err)
+		return err
+	}
+	err = writeFile(dump, fileName)
+	defer dump.Close()
+
+	return err
+}
+
+func CollectContainerTop(context context.Context, client *client.Client, containerId string, fileName string) error {
+	topList, err := client.ContainerTop(context, containerId, []string{})
+	if err != nil {
+		return err
 	}
 
-	dump, _ := client.ImageSave(context, []string{commit.ID})
-	err = writeFile(dump, fileName)
-	return err
+	fp, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+
+	w := tabwriter.NewWriter(fp, 20, 1, 3, ' ', 0)
+	_, _ = fmt.Fprintln(w, strings.Join(topList.Titles, "\t"))
+	for _, proc := range topList.Processes {
+		_, _ = fmt.Fprintln(w, strings.Join(proc, "\t"))
+	}
+	_ = w.Flush()
+
+	return nil
 }

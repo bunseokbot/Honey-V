@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"github.com/docker/docker/api/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -11,41 +12,36 @@ import (
 	"time"
 )
 
-func DumpNetwork(stopCapture <-chan string, fileName string, potName string) {
-	defer func() {
-		f, _ := os.Create(fileName)
-		w := pcapgo.NewWriter(f)
-		_ = w.WriteFileHeader(1024, layers.LinkTypeEthernet)
-		defer f.Close()
+func DumpNetwork(stopCapture <-chan string, fileName string, network types.NetworkResource) {
+	f, _ := os.Create(fileName)
+	w := pcapgo.NewWriter(f)
+	_ = w.WriteFileHeader(1024, layers.LinkTypeEthernet)
+	defer f.Close()
 
-		// Open the device for capturing
-		handle, err := pcap.OpenLive("en0", 1024, false, -1 * time.Second)
-		if err != nil {
-			fmt.Printf("Error opening device %s: %v", "en0", err)
-			os.Exit(1)
-		}
-		defer handle.Close()
+	// Open the device for capturing
+	interfaceName := fmt.Sprintf("br-%s", network.ID[:12])
+	handle, err := pcap.OpenLive(interfaceName, 1024, false, -1 * time.Second)
+	if err != nil {
+		fmt.Printf("Error opening device %s: %v", interfaceName, err)
+		os.Exit(1)
+	}
+	defer handle.Close()
 
-		var packetCount int64 = 0
+	var packetCount int64 = 0
 
-		// Start processing packets
-		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-		for packet := range packetSource.Packets() {
-			// Process packet here
-			// fmt.Println(packet)
+	// Start processing packets
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	for {
+		select {
+		case packet := <- packetSource.Packets():
 			_ = w.WritePacket(packet.Metadata().CaptureInfo, packet.Data())
 			packetCount++
-
-			select {
-			case message := <-stopCapture:
-				log.Println("message from stopCapture", message)
-				if message == potName {
-					log.Println("stop capturing packet.")
-					break
-				}
-			default:
+		case message := <- stopCapture:
+			if message == network.Name {
+				log.Printf("stop capturing %s packet.", network.Name)
+				break
 			}
+		default:
 		}
-	}()
-	// close(stopCapture)
+	}
 }
