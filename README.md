@@ -1,10 +1,6 @@
 # Honey-V
 Honeypot framework can be able to monitor realtime event based on container
 
-## License
-
-[License](./LICENSE)
-
 ## Usage
 
 ## Requirements
@@ -40,3 +36,7 @@ go build
 ```
 ./honeypot collect -i <interval:60m> -p <path of event storage>
 ```
+
+## License
+
+[Apache License 2.0](./LICENSE)
