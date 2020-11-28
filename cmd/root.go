@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use: "honeypot [OPTIONS] COMMAND [ARG...]",
+	Use:   "honeypot [OPTIONS] COMMAND [ARG...]",
 	Short: "CLI for Honeypot Management Framework",
 }
 

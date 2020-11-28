@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
-	"github.com/docker/docker/client"
-	"github.com/spf13/cobra"
-	"honeypot/middleware"
 	"log"
 	"os"
+
+	"github.com/docker/docker/client"
+	"github.com/spf13/cobra"
+
+	"github.com/bunseokbot/Honey-V/middleware"
 )
 
 var deployCmd = &cobra.Command{
@@ -44,12 +46,12 @@ var deployCmd = &cobra.Command{
 }
 
 var (
-	potName string				// Name of pot (required)
-	potImage string				// Name of docker base image if you want to deploy pot as single mode (optional)
-	potPorts []string			// Port forwarding mapper (optional)
-	potEnvironments []string	// Environment variable config (optional)
-	potComposeFile string		// Path of docker-compose.yml file if you want to deploy pot as compose mode (optional)
-	potDockerFile string		// Path of Dockerfile if you want to deployt pot with building Dockerfile (optional)
+	potName         string   // Name of pot (required)
+	potImage        string   // Name of docker base image if you want to deploy pot as single mode (optional)
+	potPorts        []string // Port forwarding mapper (optional)
+	potEnvironments []string // Environment variable config (optional)
+	potComposeFile  string   // Path of docker-compose.yml file if you want to deploy pot as compose mode (optional)
+	potDockerFile   string   // Path of Dockerfile if you want to deployt pot with building Dockerfile (optional)
 )
 
 func init() {
