@@ -6,21 +6,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 )
 
 type Pot struct {
-	Name string
+	Name       string
 	Containers []types.Container
 }
 
@@ -76,7 +77,7 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 	var labels = make(map[string]string)
 	labels["pot.name"] = potName
 
-	potNetwork, err := client.NetworkCreate(context, potName, types.NetworkCreate{CheckDuplicate:true, Labels: labels})
+	potNetwork, err := client.NetworkCreate(context, potName, types.NetworkCreate{CheckDuplicate: true, Labels: labels})
 	if err != nil {
 		return Pot{}, err
 	}
@@ -98,13 +99,13 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 		imageName = fmt.Sprintf("%s:latest", potName)
 
 		responseBody, err := client.ImageBuild(context, contextTar, types.ImageBuildOptions{
-			Context: contextTar,
-			Tags: []string{imageName},
-			NoCache: true,
-			Dockerfile: potDockerfile,
+			Context:     contextTar,
+			Tags:        []string{imageName},
+			NoCache:     true,
+			Dockerfile:  potDockerfile,
 			ForceRemove: true,
 		})
-		
+
 		_, _ = io.Copy(ioutil.Discard, responseBody.Body)
 
 		if err != nil {
@@ -123,11 +124,11 @@ func MakeNewPot(context context.Context, client *client.Client, potName string, 
 	}
 
 	response, err := client.ContainerCreate(context, &container.Config{
-		Image: imageName,
-		Labels: labels,
+		Image:        imageName,
+		Labels:       labels,
 		ExposedPorts: exposedPorts,
-		Env: potEnvironments,
-		Tty: true,
+		Env:          potEnvironments,
+		Tty:          true,
 	}, &container.HostConfig{
 		PortBindings: portBindings,
 	}, &network.NetworkingConfig{
@@ -206,17 +207,17 @@ func IsExistPotName(context context.Context, client *client.Client, potName stri
 	if err != nil {
 		return true
 	}
-	
+
 	for _, pot := range pots {
 		if pot.Name == potName {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
-func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error){
+func ReadAllPots(context context.Context, client *client.Client) ([]Pot, error) {
 	var pots []Pot
 	containers, err := client.ContainerList(context, types.ContainerListOptions{All: true})
 	if err != nil {
@@ -274,7 +275,7 @@ func ReadPotStatus(context context.Context, client *client.Client, potName strin
 	return types.ContainerStats{}, err
 }
 
-func ReadAllPotNetworks(context context.Context, client *client.Client) (map[string]types.NetworkResource, error){
+func ReadAllPotNetworks(context context.Context, client *client.Client) (map[string]types.NetworkResource, error) {
 	networks, err := client.NetworkList(context, types.NetworkListOptions{})
 	if err != nil {
 		return nil, err

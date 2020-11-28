@@ -2,14 +2,15 @@ package middleware
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"time"
+
 	"github.com/docker/docker/api/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
-	"log"
-	"os"
-	"time"
 )
 
 func DumpNetwork(stopCapture <-chan string, fileName string, network types.NetworkResource) {
@@ -20,7 +21,7 @@ func DumpNetwork(stopCapture <-chan string, fileName string, network types.Netwo
 
 	// Open the device for capturing
 	interfaceName := fmt.Sprintf("br-%s", network.ID[:12])
-	handle, err := pcap.OpenLive(interfaceName, 1024, false, -1 * time.Second)
+	handle, err := pcap.OpenLive(interfaceName, 1024, false, -1*time.Second)
 	if err != nil {
 		fmt.Printf("Error opening device %s: %v", interfaceName, err)
 		os.Exit(1)
@@ -33,10 +34,10 @@ func DumpNetwork(stopCapture <-chan string, fileName string, network types.Netwo
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for {
 		select {
-		case packet := <- packetSource.Packets():
+		case packet := <-packetSource.Packets():
 			_ = w.WritePacket(packet.Metadata().CaptureInfo, packet.Data())
 			packetCount++
-		case message := <- stopCapture:
+		case message := <-stopCapture:
 			if message == network.Name {
 				log.Printf("stop capturing %s packet.", network.Name)
 				break

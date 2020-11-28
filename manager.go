@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"honeypot/cmd"
 	"io"
 	"log"
 	"os"
+
+	"github.com/bunseokbot/Honey-V/cmd"
 )
 
 func introTitle() {
@@ -27,7 +28,7 @@ func main() {
 	introTitle()
 
 	// set logger
-	fpLog, err := os.OpenFile("honeypot.log", os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
+	fpLog, err := os.OpenFile("honeypot.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
 	}

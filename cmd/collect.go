@@ -8,18 +8,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
-	"github.com/spf13/cobra"
-	"honeypot/middleware"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-)
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
+	"github.com/spf13/cobra"
+
+	"github.com/bunseokbot/Honey-V/middleware"
+)
 
 func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
 	managedPots := make(map[string]types.NetworkResource)
@@ -54,14 +55,14 @@ func captureNetworkPacket(ctx context.Context, cli *client.Client, stopCapture c
 			}
 		}
 
-		<- timer.C
+		<-timer.C
 	}
 }
 
 func manageNetworkPacketCapture(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
 	for {
 		select {
-		case message := <- resumeCapture:
+		case message := <-resumeCapture:
 			log.Printf("resume %s network packet capture", message)
 			network, err := middleware.ReadPotNetwork(ctx, cli, message)
 			if err != nil {
@@ -144,7 +145,6 @@ func renameDirectory(potName string) error {
 	return err
 }
 
-
 func calculateFileHash(filePath string) error {
 	fileHashMap := make(map[string]string)
 
@@ -226,7 +226,7 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 	}
 
 	log.Printf("Compress artifact from %s pot\n", pot.Name)
-	 */
+	*/
 
 	err = renameDirectory(pot.Name)
 	if err != nil {
@@ -251,7 +251,6 @@ func collectContainerArtifact(ctx context.Context, cli *client.Client, stopCaptu
 
 	log.Printf("Successfully replaced %s pot to clean container", pot.Name)
 }
-
 
 func manageContainerArtifact(ctx context.Context, cli *client.Client, stopCapture chan string, resumeCapture chan string) {
 	pots, err := middleware.ReadAllPots(ctx, cli)
@@ -297,13 +296,13 @@ var collectCmd = &cobra.Command{
 				manageContainerArtifact(ctx, cli, stopCapture, resumeCapture)
 			}
 			count++
-			<- collectTimer.C
+			<-collectTimer.C
 		}
 	},
 }
 
 var (
-	outputRoot string
+	outputRoot      string
 	collectInterval int
 )
 

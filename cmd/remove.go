@@ -2,14 +2,16 @@ package cmd
 
 import (
 	"context"
+	"log"
+
 	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
-	"honeypot/middleware"
-	"log"
+
+	"github.com/bunseokbot/Honey-V/middleware"
 )
 
 var removeCmd = &cobra.Command{
-	Use : "remove",
+	Use: "remove",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
